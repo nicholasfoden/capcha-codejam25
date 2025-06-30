@@ -70,8 +70,15 @@
       const messageDiv = document.getElementById('message');
       const resetButton = document.getElementById('resetButton');
 
-      // Minimum number of points to ensure the stroke is long enough
+      // Define a minimum number of points before a stroke is considered long enough
       const minStrokePoints = 30;
+
+      // Define a threshold for "completeness" relative to the average radius.
+      const completenessThresholdPercentage = 0.30;
+
+      // Define pass/fail bounds
+      const lowerBound = 90;
+      const upperBound = 95;
 
       let drawing = false;
       let strokePoints = [];
@@ -179,9 +186,24 @@
 
           // Handle cases where averageRadius is negligible (e.g., just a dot or very small scribble)
           if (averageRadius < 5) { // Threshold for minimum meaningful radius
-              messageDiv.textContent = "Error: Drawing is too small or indistinct. Try drawing a larger circle.";
+              messageDiv.textContent = "Drawing is too small or indistinct. Try drawing a larger circle.";
               messageDiv.style.color = 'red';
               return;
+          }
+
+          // Check for circle completeness
+          const startPoint = strokePoints[0];
+          const endPoint = strokePoints[strokePoints.length - 1];
+          const startToEndDistance = Math.sqrt( Math.pow(endPoint.x - startPoint.x, 2) + Math.pow(endPoint.y - startPoint.y, 2) );
+
+          // If the distance between start and end is more than the threshold percentage of the radius, it's not complete.
+          if (startToEndDistance > averageRadius * completenessThresholdPercentage) {
+              messageDiv.textContent = "Please draw a complete circle!";
+              messageDiv.style.color = 'red';
+              
+              // Optionally, draw the ideal circle to show what was expected
+              drawPerfectCircle(centroidX, centroidY, averageRadius);
+              return; // Exit analysis early if not complete
           }
 
           // 3. Calculate Mean Absolute Deviation (MAD) from the average radius
@@ -202,30 +224,31 @@
 
           messageDiv.textContent = `Circularity: ${percentage}%`;
 
-          // Define pass/fail bounds
-          const lowerBound = 70;
-          const upperBound = 80;
-
+  
           if (percentage >= lowerBound && percentage <= upperBound) {
              captchaSuccess()
           } 
           else if(percentage < lowerBound) {
-            messageDiv.textContent = `Not a good enough circle: ${percentage}%`;
+            messageDiv.textContent = `Not a circle`;
             messageDiv.textContent += " - Try harder";
             messageDiv.style.color = 'red';
           }
           else if(percentage > upperBound){
-            messageDiv.textContent = `Too good a circle: ${percentage}%`;
+            messageDiv.textContent = `Too perfect: ${percentage}%`;
             messageDiv.textContent += " - You are a robot!";
             messageDiv.style.color = 'red';
           }
 
           // Optional: Draw the calculated "perfect" circle for visualization
-          ctx.beginPath();
-          ctx.strokeStyle = 'blue'; // Color for the ideal circle
-          ctx.lineWidth = 1;
-          ctx.arc(centroidX, centroidY, averageRadius, 0, Math.PI * 2);
-          ctx.stroke();
+          drawPerfectCircle(centroidX, centroidY, averageRadius);
+      }
+
+      function drawPerfectCircle(x, y, avgRadius){
+        ctx.beginPath();
+        ctx.strokeStyle = 'blue'; // Color for the ideal circle
+        ctx.lineWidth = 1;
+        ctx.arc(x, y, avgRadius, 0, Math.PI * 2);
+        ctx.stroke();
       }
 
       /**
