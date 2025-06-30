@@ -43,6 +43,7 @@
       border: 1px solid #007bff;
       background-color: #007bff;
       color: white;
+      width: 100%;
       border-radius: 4px;
       transition: background-color 0.3s ease;
     }
@@ -73,6 +74,9 @@
       // Define a minimum number of points before a stroke is considered long enough
       const minStrokePoints = 30;
 
+      // Define a threshold for minimum meaningful radius
+      minAverageRadius = 5;
+
       // Define a threshold for "completeness" relative to the average radius.
       const completenessThresholdPercentage = 0.30;
 
@@ -85,7 +89,7 @@
       let hasDrawn = false; // Flag to ensure only the first significant stroke is analyzed
 
       // Set line properties for drawing
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 5;
       ctx.lineCap = 'round';
       ctx.strokeStyle = '#333';
 
@@ -148,7 +152,7 @@
               analyzeStroke();
               resetButton.style.display = 'block'; // Show reset button after analysis
           } else if (!hasDrawn) {
-              messageDiv.textContent = "Please draw a more substantial stroke to analyze.";
+              messageDiv.textContent = "Please draw a circle.";
               messageDiv.style.color = 'orange';
               ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear small/invalid strokes
           }
@@ -159,7 +163,7 @@
        */
       function analyzeStroke() {
           if (strokePoints.length < minStrokePoints) {
-              messageDiv.textContent = "Not enough points for analysis. Try drawing a larger circle.";
+              messageDiv.textContent = "Try drawing a larger circle.";
               messageDiv.style.color = 'red';
               return;
           }
@@ -185,8 +189,8 @@
           const averageRadius = sumDistances / strokePoints.length;
 
           // Handle cases where averageRadius is negligible (e.g., just a dot or very small scribble)
-          if (averageRadius < 5) { // Threshold for minimum meaningful radius
-              messageDiv.textContent = "Drawing is too small or indistinct. Try drawing a larger circle.";
+          if (averageRadius < minAverageRadius) {
+              messageDiv.textContent = "Drawing is too small. Try drawing a larger circle.";
               messageDiv.style.color = 'red';
               return;
           }
@@ -222,20 +226,16 @@
           // Clamp the percentage between 0 and 100 and format to two decimal places
           const percentage = Math.max(0, Math.min(100, circularityScore)).toFixed(2);
 
-          messageDiv.textContent = `Circularity: ${percentage}%`;
-
   
           if (percentage >= lowerBound && percentage <= upperBound) {
              captchaSuccess()
           } 
           else if(percentage < lowerBound) {
             messageDiv.textContent = `Not a circle`;
-            messageDiv.textContent += " - Try harder";
             messageDiv.style.color = 'red';
           }
           else if(percentage > upperBound){
-            messageDiv.textContent = `Too perfect: ${percentage}%`;
-            messageDiv.textContent += " - You are a robot!";
+            messageDiv.textContent = `You are a robot!`;
             messageDiv.style.color = 'red';
           }
 
