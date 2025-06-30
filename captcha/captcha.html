@@ -6,33 +6,57 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <style type="text/css">
-    html,
-    body {
-      background: pink;
-      margin: 0;
-      padding: 0;
-      font-family: sans-serif;
-    }
-
     #captcha-container {
       background: white;
       width: 390px;
       height: 300px;
     }
 
-    /* Your style here... */
+   body {
+      margin: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-family: Arial, sans-serif;
+      height: 100%;
+      box-sizing: border-box; 
+      padding: 5px;
+    }
+    canvas {
+      border: 1px solid #000;
+      cursor: crosshair;
+      background-color: #fff;
+      box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
+    }
+    #message {
+      margin-top: 10px;
+      font-weight: bold;
+      text-align: center;
+      min-height: 20px; /* Reserve space to prevent layout shift */
+    }
+    button {
+      margin-top: 10px;
+      padding: 8px 15px;
+      cursor: pointer;
+      border: 1px solid #007bff;
+      background-color: #007bff;
+      color: white;
+      border-radius: 4px;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
   </style>
 </head>
 
 <body>
   <div id="captcha-container">
-    <!-- Add your CAPTCHA here: -->
-    Hello world!
-
-    <!-- We've added a sample button. Feel free to remove it: -->
-    <button id="solve">
-      Solve!
-    </button>
+    <canvas id="circleCanvas" width="380" height="230"></canvas>
+    <div id="message">Draw a circle.</div>
+    <button id="resetButton" style="display:none;">Try Again</button>
   </div>
 
   <script type="text/javascript">
@@ -41,11 +65,181 @@
       function captchaSuccess() {
         window.top.postMessage("success", '*');
       }
+      const canvas = document.getElementById('circleCanvas');
+      const ctx = canvas.getContext('2d');
+      const messageDiv = document.getElementById('message');
+      const resetButton = document.getElementById('resetButton');
 
-      // Your CAPTCHA code goes here, we've added a simple example below:
-      document.getElementById('solve')
-           .addEventListener('click', () => captchaSuccess());
+      // Minimum number of points to ensure the stroke is long enough
+      const minStrokePoints = 30;
 
+      let drawing = false;
+      let strokePoints = [];
+      let hasDrawn = false; // Flag to ensure only the first significant stroke is analyzed
+
+      // Set line properties for drawing
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#333';
+
+      // Mouse Events
+      canvas.addEventListener('mousedown', startDrawing);
+      canvas.addEventListener('mousemove', draw);
+      canvas.addEventListener('mouseup', stopDrawing);
+      canvas.addEventListener('mouseout', stopDrawing); // Stop drawing if mouse leaves canvas
+
+      // Touch Events
+      canvas.addEventListener('touchstart', startDrawing);
+      canvas.addEventListener('touchmove', draw);
+      canvas.addEventListener('touchend', stopDrawing);
+      canvas.addEventListener('touchcancel', stopDrawing); // Handle when touch is interrupted
+
+      // Reset
+      resetButton.addEventListener('click', resetCaptcha);
+
+      /**
+       * Starts the drawing process.
+       * @param {MouseEvent} e - The mouse event.
+       */
+      function startDrawing(e) {
+          if (hasDrawn) return; // Prevent new drawings after the first analysis
+          drawing = true;
+          strokePoints = []; // Clear previous points for a new stroke
+          ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas for a fresh drawing
+          ctx.beginPath();
+          const rect = canvas.getBoundingClientRect();
+          // Calculate mouse position relative to the canvas
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          ctx.moveTo(x, y);
+          strokePoints.push({ x, y });
+      }
+
+      /**
+       * Draws on the canvas as the mouse moves.
+       * @param {MouseEvent} e - The mouse event.
+       */
+      function draw(e) {
+          if (!drawing) return;
+          const rect = canvas.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          ctx.lineTo(x, y);
+          ctx.stroke();
+          strokePoints.push({ x, y });
+      }
+
+      /**
+       * Stops the drawing process and initiates analysis if a stroke was made.
+       */
+      function stopDrawing() {
+          if(!drawing) return; // Only proceed if drawing was active
+          drawing = false;
+          // Only analyze the first substantial stroke
+          if (strokePoints.length > minStrokePoints && !hasDrawn) { // Require a minimum number of points for meaningful analysis
+              hasDrawn = true;
+              analyzeStroke();
+              resetButton.style.display = 'block'; // Show reset button after analysis
+          } else if (!hasDrawn) {
+              messageDiv.textContent = "Please draw a more substantial stroke to analyze.";
+              messageDiv.style.color = 'orange';
+              ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear small/invalid strokes
+          }
+      }
+
+      /**
+       * Analyzes the drawn stroke to determine its circularity.
+       */
+      function analyzeStroke() {
+          if (strokePoints.length < minStrokePoints) {
+              messageDiv.textContent = "Not enough points for analysis. Try drawing a larger circle.";
+              messageDiv.style.color = 'red';
+              return;
+          }
+
+          // 1. Calculate Centroid of the drawn points
+          let sumX = 0;
+          let sumY = 0;
+          for (const p of strokePoints) {
+              sumX += p.x;
+              sumY += p.y;
+          }
+          const centroidX = sumX / strokePoints.length;
+          const centroidY = sumY / strokePoints.length;
+
+          // 2. Calculate distances of each point from the centroid and the average radius
+          let distances = [];
+          let sumDistances = 0;
+          for (const p of strokePoints) {
+              const dist = Math.sqrt(Math.pow(p.x - centroidX, 2) + Math.pow(p.y - centroidY, 2));
+              distances.push(dist);
+              sumDistances += dist;
+          }
+          const averageRadius = sumDistances / strokePoints.length;
+
+          // Handle cases where averageRadius is negligible (e.g., just a dot or very small scribble)
+          if (averageRadius < 5) { // Threshold for minimum meaningful radius
+              messageDiv.textContent = "Error: Drawing is too small or indistinct. Try drawing a larger circle.";
+              messageDiv.style.color = 'red';
+              return;
+          }
+
+          // 3. Calculate Mean Absolute Deviation (MAD) from the average radius
+          let sumAbsDeviations = 0;
+          for (const dist of distances) {
+              sumAbsDeviations += Math.abs(dist - averageRadius);
+          }
+          const mad = sumAbsDeviations / strokePoints.length;
+
+          // 4. Calculate the Circularity Score
+          // This score represents how close the drawn shape is to a perfect circle.
+          // A perfect circle has MAD = 0, resulting in a 100% score.
+          // As MAD increases relative to the averageRadius, the score decreases.
+          const circularityScore = (1 - (mad / averageRadius)) * 100;
+
+          // Clamp the percentage between 0 and 100 and format to two decimal places
+          const percentage = Math.max(0, Math.min(100, circularityScore)).toFixed(2);
+
+          messageDiv.textContent = `Circularity: ${percentage}%`;
+
+          // Define pass/fail bounds
+          const lowerBound = 70;
+          const upperBound = 80;
+
+          if (percentage >= lowerBound && percentage <= upperBound) {
+             captchaSuccess()
+          } 
+          else if(percentage < lowerBound) {
+            messageDiv.textContent = `Not a good enough circle: ${percentage}%`;
+            messageDiv.textContent += " - Try harder";
+            messageDiv.style.color = 'red';
+          }
+          else if(percentage > upperBound){
+            messageDiv.textContent = `Too good a circle: ${percentage}%`;
+            messageDiv.textContent += " - You are a robot!";
+            messageDiv.style.color = 'red';
+          }
+
+          // Optional: Draw the calculated "perfect" circle for visualization
+          ctx.beginPath();
+          ctx.strokeStyle = 'blue'; // Color for the ideal circle
+          ctx.lineWidth = 1;
+          ctx.arc(centroidX, centroidY, averageRadius, 0, Math.PI * 2);
+          ctx.stroke();
+      }
+
+      /**
+       * Resets the captcha to its initial state, allowing the user to try again.
+       */
+      function resetCaptcha() {
+          ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas completely
+          strokePoints = [];
+          drawing = false;
+          hasDrawn = false; // Reset the drawn flag
+          messageDiv.textContent = "Draw your circle.";
+          messageDiv.style.color = 'black';
+          resetButton.style.display = 'none'; // Hide the reset button until a new drawing is made
+      }
     })(window, document);
   </script>
 </body>
